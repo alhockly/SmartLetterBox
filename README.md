@@ -1,2 +1,2 @@
 # SmartLetterBox
-A letter box that sends you a notifcation
+If its not a smart device its a dumb device
