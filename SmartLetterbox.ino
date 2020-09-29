@@ -16,7 +16,7 @@ const char* password = "Despacito2";
 
 const char* mDnsName = "Letterbox";
 
-String ifttt_url = "https://maker.ifttt.com/trigger/postbox/with/key/"; //KEY INTENTIONALLY LEFT OUT
+String ifttt_url = "http://maker.ifttt.com/trigger/postbox/with/key/"; //KEY INTENTIONALLY LEFT OUT
 
 const int dstPort = 5000;
 // Set web server port number to 80
@@ -229,7 +229,7 @@ void readMPU(){
   gyro_y = Wire.read()<<8 | Wire.read(); // reading registers: 0x45 (GYRO_YOUT_H) and 0x46 (GYRO_YOUT_L)
   gyro_z = Wire.read()<<8 | Wire.read(); // reading registers: 0x47 (GYRO_ZOUT_H) and 0x48 (GYRO_ZOUT_L)
 
-  accelerometer_y = map(accelerometer_y, -10000,10000,0,100);
+  accelerometer_y = map(accelerometer_y, -10000,10000,0,1000);
  }
 
 void wifiSetup(){
