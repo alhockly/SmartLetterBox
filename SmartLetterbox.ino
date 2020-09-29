@@ -101,12 +101,12 @@ void sendWebPOST(){
     // Your Domain name with URL path or IP address with path
     http.begin(ifttt_url);
     
-    // Specify content-type header
-    http.addHeader("Content-Type", "text/plain");
-    // Data to send with HTTP POST
-    String httpRequestData = "";           
+    // // Specify content-type header
+    // http.addHeader("Content-Type", "text/plain");
+    // // Data to send with HTTP POST
+    // String httpRequestData = "";           
     // Send HTTP POST request
-    int httpResponseCode = http.POST("hello");
+    int httpResponseCode = http.GET();
     http.end();
     Serial.print("response was: ");
     Serial.println(httpResponseCode);
@@ -255,4 +255,4 @@ void wifiSetup(){
   Serial.println("mDNS responder started");
 
     MDNS.addService("http", "tcp", 80);
-        }
+}
