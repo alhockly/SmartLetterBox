@@ -2,6 +2,7 @@
 
 // Load Wi-Fi library
 #include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
 #include <WiFiUdp.h>
 #include <ESP8266mDNS.h>        // Include the mDNS library
 #include <EEPROM.h>
@@ -14,6 +15,8 @@ const char* ssid = "TrilliumKillinEm";
 const char* password = "Despacito2";
 
 const char* mDnsName = "Letterbox";
+
+String ifttt_url = "https://maker.ifttt.com/trigger/postbox/with/key/q6KmNcsoD2nIy5Rjgeic_";
 
 const int dstPort = 5000;
 // Set web server port number to 80
@@ -65,22 +68,22 @@ void loop() {
   
   // print out data
   //Serial.print("aX = "); Serial.print(convert_int16_to_str(accelerometer_x));
-  Serial.print(" | aY = "); Serial.print(convert_int16_to_str(accelerometer_y));
+  //Serial.print(" | aY = "); Serial.print(convert_int16_to_str(accelerometer_y));
   //Serial.print(" | aZ = "); Serial.print(convert_int16_to_str(accelerometer_z));
   // the following equation was taken from the documentation [MPU-6000/MPU-6050 Register Map and Description, p.30]
   //Serial.print(" | tmp = "); Serial.print(temperature/340.00+36.53);
   //Serial.print(" | gX = "); Serial.print(convert_int16_to_str(gyro_x));
-  Serial.print(" | gY = "); Serial.print(convert_int16_to_str(gyro_y));
+  //Serial.print(" | gY = "); Serial.print(convert_int16_to_str(gyro_y));
   //Serial.print(" | gZ = "); Serial.print(convert_int16_to_str(gyro_z));
-  Serial.println();
+  //Serial.println();
 
   handleClient();
   // delay
-  delay(100);
+  //delay(100);
 }
 
 void eepromWrite(int address, int16_t data){
-  EEPROM.write(address, data); //Write one by one with starting address of 0x0F
+  EEPROM.write(address, data); 
   EEPROM.commit();
     
 }
@@ -88,6 +91,20 @@ void eepromWrite(int address, int16_t data){
 int16_t eepromRead(int address){
     return EEPROM.read(address);
   }
+
+void sendWebPOST(){
+    HTTPClient http;
+      
+    // Your Domain name with URL path or IP address with path
+    http.begin(serverName);
+    
+    // Specify content-type header
+    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+    // Data to send with HTTP POST
+    String httpRequestData = "api_key=" + apiKey + "&field1=" + String(random(40));           
+    // Send HTTP POST request
+    int httpResponseCode = http.POST(httpRequestData);
+}
 
 
 void handleClient(){
