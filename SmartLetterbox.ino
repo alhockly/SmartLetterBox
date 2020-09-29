@@ -16,7 +16,7 @@ const char* password = "Despacito2";
 
 const char* mDnsName = "Letterbox";
 
-String ifttt_url = "https://maker.ifttt.com/trigger/postbox/with/key/q6KmNcsoD2nIy5Rjgeic_";
+String ifttt_url = "https://maker.ifttt.com/trigger/postbox/with/key/" //KEY INTENTIONALLY LEFT OUT
 
 const int dstPort = 5000;
 // Set web server port number to 80
@@ -52,7 +52,6 @@ void setup() {
   minY_acc = eepromRead(minY_acc_ADDR);
   Serial.print("maxY read");
   Serial.println(maxY_acc);
-
 
   Wire.begin();
   Wire.beginTransmission(MPU_ADDR); // Begins a transmission to the I2C slave (GY-521 board)
@@ -96,12 +95,12 @@ void sendWebPOST(){
     HTTPClient http;
       
     // Your Domain name with URL path or IP address with path
-    http.begin(serverName);
+    http.begin(ifttt_url);
     
     // Specify content-type header
     http.addHeader("Content-Type", "application/x-www-form-urlencoded");
     // Data to send with HTTP POST
-    String httpRequestData = "api_key=" + apiKey + "&field1=" + String(random(40));           
+    String httpRequestData = "";           
     // Send HTTP POST request
     int httpResponseCode = http.POST(httpRequestData);
 }
@@ -168,6 +167,7 @@ void handleClient(){
             client.println("<body><h1>Letter box</h1>");
             if(accelerometer_y > minY_acc){
               client.println("<div class=\"flapIndicator open\"></div>");
+              sendWebPOST();
             } else {
               client.println("<div class=\"flapIndicator close\"></div>");
             }
