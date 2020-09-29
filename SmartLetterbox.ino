@@ -16,7 +16,7 @@ const char* password = "Despacito2";
 
 const char* mDnsName = "Letterbox";
 
-String ifttt_url = "https://maker.ifttt.com/trigger/postbox/with/key/" //KEY INTENTIONALLY LEFT OUT
+String ifttt_url = "https://maker.ifttt.com/trigger/postbox/with/key/"; //KEY INTENTIONALLY LEFT OUT
 
 const int dstPort = 5000;
 // Set web server port number to 80
@@ -60,6 +60,8 @@ void setup() {
   Wire.endTransmission(true);
 
   wifiSetup();
+  readMPU();
+  minY_acc = accelerometer_y;
 }
 void loop() {
   readMPU();
@@ -78,7 +80,7 @@ void loop() {
 
   handleClient();
   // delay
-  //delay(100);
+  delay(100);
 }
 
 void eepromWrite(int address, int16_t data){
@@ -92,6 +94,8 @@ int16_t eepromRead(int address){
   }
 
 void sendWebPOST(){
+    Serial.print("sending POST to ");
+    Serial.println(ifttt_url);
     HTTPClient http;
       
     // Your Domain name with URL path or IP address with path
@@ -103,6 +107,8 @@ void sendWebPOST(){
     String httpRequestData = "";           
     // Send HTTP POST request
     int httpResponseCode = http.POST(httpRequestData);
+    Serial.print("response was: ");
+    Serial.println(httpResponseCode);
 }
 
 
@@ -165,7 +171,7 @@ void handleClient(){
             
             
             client.println("<body><h1>Letter box</h1>");
-            if(accelerometer_y > minY_acc){
+            if(accelerometer_y > maxY_acc){
               client.println("<div class=\"flapIndicator open\"></div>");
               sendWebPOST();
             } else {
