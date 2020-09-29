@@ -22,8 +22,8 @@ WiFiServer server(80);
 // Variable to store the HTTP request
 String header;
 
-int16_t maxY_acc = 1000;
-int16_t minY_acc = -1000;
+int16_t maxY_acc = 69;
+int16_t minY_acc = -69;
 
 const int maxY_acc_ADDR = 0x0F;
 const int minY_acc_ADDR = 0x10;
@@ -40,10 +40,17 @@ char* convert_int16_to_str(int16_t i) { // converts int16 to string. Moreover, r
 }
 
 void setup() {
+  Serial.begin(9600);
   EEPROM.begin(512);  //Initialize EEPROM
+  // eepromWrite(minY_acc_ADDR,minY_acc);
+  // eepromWrite(maxY_acc_ADDR,maxY_acc);
+
   maxY_acc = eepromRead(maxY_acc_ADDR);
   minY_acc = eepromRead(minY_acc_ADDR);
-  Serial.begin(9600);
+  Serial.print("maxY read");
+  Serial.println(maxY_acc);
+
+
   Wire.begin();
   Wire.beginTransmission(MPU_ADDR); // Begins a transmission to the I2C slave (GY-521 board)
   Wire.write(0x6B); // PWR_MGMT_1 register
@@ -54,6 +61,7 @@ void setup() {
 }
 void loop() {
   readMPU();
+  
   
   // print out data
   //Serial.print("aX = "); Serial.print(convert_int16_to_str(accelerometer_x));
@@ -106,7 +114,27 @@ void handleClient(){
 
 
             if (header.indexOf("GET /minY") >= 0) {
-              Serial.println(header);
+              String url = header;
+              url.replace("GET /minY", "");
+              url.substring(0, url.indexOf("HTTP"));
+              minY_acc = url.toInt();
+              Serial.print("SETTING MIN Y TO: ");
+              Serial.println(minY_acc);
+              Serial.println();
+
+              eepromWrite(minY_acc_ADDR, minY_acc);
+            }
+
+            if (header.indexOf("GET /maxY") >= 0) {
+              String url = header;
+              url.replace("GET /maxY", "");
+              url.substring(0, url.indexOf("HTTP"));
+              maxY_acc = url.toInt();
+              Serial.print("SETTING MAX Y TO: ");
+              Serial.println(maxY_acc);
+              Serial.println();
+
+              eepromWrite(maxY_acc_ADDR, maxY_acc);
             }
 
            
@@ -115,18 +143,28 @@ void handleClient(){
             client.println("<!DOCTYPE html><html>");
             client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
             client.println("<link rel=\"icon\" href=\"data:,\">");
+            client.println("<style>.flapIndicator{width:20px;height:20px;} .open{background:green;} .close{background:red;}</style>");
             client.println("</head>");
          
             
             
             client.println("<body><h1>Letter box</h1>");
+            if(accelerometer_y > minY_acc){
+              client.println("<div class=\"flapIndicator open\"></div>");
+            } else {
+              client.println("<div class=\"flapIndicator close\"></div>");
+            }
+            
+            client.println("accelerometer Y: ");
             client.println(convert_int16_to_str(accelerometer_y));
             client.println("<br>");
-            client.println(convert_int16_to_str(gyro_y));
-            client.println("<br>");
+            
             client.println("min Y acc: ");
             client.println(convert_int16_to_str(minY_acc));
             client.println("<br>");
+            client.println("max Y acc: ");
+            client.println(convert_int16_to_str(maxY_acc));
+            client.println("<br><br><br>");
             client.println(WiFi.macAddress());
 
             
@@ -166,6 +204,8 @@ void readMPU(){
   gyro_x = Wire.read()<<8 | Wire.read(); // reading registers: 0x43 (GYRO_XOUT_H) and 0x44 (GYRO_XOUT_L)
   gyro_y = Wire.read()<<8 | Wire.read(); // reading registers: 0x45 (GYRO_YOUT_H) and 0x46 (GYRO_YOUT_L)
   gyro_z = Wire.read()<<8 | Wire.read(); // reading registers: 0x47 (GYRO_ZOUT_H) and 0x48 (GYRO_ZOUT_L)
+
+  accelerometer_y = map(accelerometer_y, -10000,10000,0,100);
  }
 
 void wifiSetup(){
