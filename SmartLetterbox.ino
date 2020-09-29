@@ -102,11 +102,12 @@ void sendWebPOST(){
     http.begin(ifttt_url);
     
     // Specify content-type header
-    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+    http.addHeader("Content-Type", "text/plain");
     // Data to send with HTTP POST
     String httpRequestData = "";           
     // Send HTTP POST request
-    int httpResponseCode = http.POST(httpRequestData);
+    int httpResponseCode = http.POST("hello");
+    http.end();
     Serial.print("response was: ");
     Serial.println(httpResponseCode);
 }
