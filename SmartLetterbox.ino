@@ -16,7 +16,7 @@ const char* password = "Despacito2";
 
 const char* mDnsName = "Letterbox";
 
-String ifttt_url = "http://maker.ifttt.com/trigger/postbox/with/key/"; //KEY INTENTIONALLY LEFT OUT
+String ifttt_url = "http://maker.ifttt.com/trigger/postbox/with/key/q6KmNcsoD2nIy5Rjgeic_"; //KEY INTENTIONALLY LEFT OUT
 
 const int dstPort = 5000;
 // Set web server port number to 80
@@ -33,6 +33,8 @@ const int minY_acc_ADDR = 0x10;
 
 const int MPU_ADDR = 0x68; // I2C address of the MPU-6050. If AD0 pin is set to HIGH, the I2C address will be 0x69.
 int16_t accelerometer_x, accelerometer_y, accelerometer_z; // variables for accelerometer raw data
+int16_t last_accelerometer_y;
+int16_t gyro_y_diff;
 int16_t gyro_x, gyro_y, gyro_z; // variables for gyro raw data
 int16_t temperature; // variables for temperature data
 char tmp_str[7]; // temporary variable used in convert function
@@ -45,23 +47,30 @@ char* convert_int16_to_str(int16_t i) { // converts int16 to string. Moreover, r
 void setup() {
   Serial.begin(9600);
   EEPROM.begin(512);  //Initialize EEPROM
-  // eepromWrite(minY_acc_ADDR,minY_acc);
-  // eepromWrite(maxY_acc_ADDR,maxY_acc);
 
   maxY_acc = eepromRead(maxY_acc_ADDR);
   minY_acc = eepromRead(minY_acc_ADDR);
-  Serial.print("maxY read");
-  Serial.println(maxY_acc);
-
+  Serial.print("maxY read "); Serial.println(maxY_acc);
+  Serial.print("minY read "); Serial.println(minY_acc);
+  
   Wire.begin();
   Wire.beginTransmission(MPU_ADDR); // Begins a transmission to the I2C slave (GY-521 board)
   Wire.write(0x6B); // PWR_MGMT_1 register
   Wire.write(0); // set to zero (wakes up the MPU-6050)
   Wire.endTransmission(true);
 
+  Serial.println(eepromRead(0x01));
   wifiSetup();
+  delay(200);
   readMPU();
+  delay(500);
+  readMPU();
+ 
   minY_acc = accelerometer_y;
+  Serial.print("got closed value of "); Serial.println(minY_acc);
+  if(accelerometer_y > maxY_acc){
+    maxY_acc = minY_acc * 2;    
+  }
 }
 void loop() {
   readMPU();
@@ -69,17 +78,24 @@ void loop() {
   
   // print out data
   //Serial.print("aX = "); Serial.print(convert_int16_to_str(accelerometer_x));
-  //Serial.print(" | aY = "); Serial.print(convert_int16_to_str(accelerometer_y));
+  Serial.print(" | aY = ");
+  Serial.print(convert_int16_to_str(accelerometer_y));
   //Serial.print(" | aZ = "); Serial.print(convert_int16_to_str(accelerometer_z));
   // the following equation was taken from the documentation [MPU-6000/MPU-6050 Register Map and Description, p.30]
   //Serial.print(" | tmp = "); Serial.print(temperature/340.00+36.53);
   //Serial.print(" | gX = "); Serial.print(convert_int16_to_str(gyro_x));
-  //Serial.print(" | gY = "); Serial.print(convert_int16_to_str(gyro_y));
+  Serial.print(" | gYdiff = "); 
+  Serial.println(convert_int16_to_str(gyro_y_diff));
   //Serial.print(" | gZ = "); Serial.print(convert_int16_to_str(gyro_z));
   //Serial.println();
 
+  if(gyro_y_diff > 1000 && accelerometer_y > minY_acc){
+    sendWebPOST();
+  }
+            
+
   handleClient();
-  // delay
+
   delay(100);
 }
 
@@ -174,7 +190,6 @@ void handleClient(){
             client.println("<body><h1>Letter box</h1>");
             if(accelerometer_y > maxY_acc){
               client.println("<div class=\"flapIndicator open\"></div>");
-              sendWebPOST();
             } else {
               client.println("<div class=\"flapIndicator close\"></div>");
             }
@@ -215,6 +230,8 @@ void handleClient(){
  }
 
 void readMPU(){
+  last_accelerometer_y = accelerometer_y;
+  gyro_y_diff = gyro_y;
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x3B); // starting with register 0x3B (ACCEL_XOUT_H) [MPU-6000 and MPU-6050 Register Map and Descriptions Revision 4.2, p.40]
   Wire.endTransmission(false); // the parameter indicates that the Arduino will send a restart. As a result, the connection is kept active.
@@ -230,6 +247,9 @@ void readMPU(){
   gyro_z = Wire.read()<<8 | Wire.read(); // reading registers: 0x47 (GYRO_ZOUT_H) and 0x48 (GYRO_ZOUT_L)
 
   accelerometer_y = map(accelerometer_y, -10000,10000,0,1000);
+
+  accelerometer_y = (last_accelerometer_y + accelerometer_y)/2;
+  gyro_y_diff = abs(gyro_y_diff - gyro_y);
  }
 
 void wifiSetup(){
