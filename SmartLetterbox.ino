@@ -1,35 +1,26 @@
-
-
-// Load Wi-Fi library
-#include <ESP8266WiFi.h>
-#include <ESP8266HTTPClient.h>
-#include <WiFiUdp.h>
+#include <ESP8266WiFi.h>        // Library to connect to Wi-Fi
+#include <ESP8266HTTPClient.h>  // Library to send http
+#include <ESP8266WebServer.h>   // esp8266 Arduino webserver lib
 #include <ESP8266mDNS.h>        // Include the mDNS library
-#include <EEPROM.h>
-#include "Wire.h" // This library allows you to communicate with I2C devices.
-
-WiFiUDP udp;
+#include <EEPROM.h>             // use the 512kb of non-volitile memory
+#include <Wire.h>               // communicate with I2C devices.
 
 // Replace with your network credentials
 const char* ssid = "TrilliumKillinEm";
 const char* password = "Despacito2";
-
 const char* mDnsName = "Letterbox";
 
-String ifttt_url = "http://maker.ifttt.com/trigger/postbox/with/key/q6KmNcsoD2nIy5Rjgeic_"; //KEY INTENTIONALLY LEFT OUT
+String ip;
 
-const int dstPort = 5000;
-// Set web server port number to 80
-WiFiServer server(80);
+String ifttt_url = "http://maker.ifttt.com/trigger/postbox/with/key/"; //KEY INTENTIONALLY LEFT OUT
 
-// Variable to store the HTTP request
-String header;
+String html_index_head = "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Smart letterbox</title></head>";
 
-int16_t maxY_acc = 69;
-int16_t minY_acc = -69;
+ESP8266WebServer server(80);
 
-const int maxY_acc_ADDR = 0x0F;
-const int minY_acc_ADDR = 0x10;
+int16_t gyroY_thresh = 1000;
+
+const int gyroY_thresh_ADDR = 0x20;
 
 const int MPU_ADDR = 0x68; // I2C address of the MPU-6050. If AD0 pin is set to HIGH, the I2C address will be 0x69.
 int16_t accelerometer_x, accelerometer_y, accelerometer_z; // variables for accelerometer raw data
@@ -47,187 +38,114 @@ char* convert_int16_to_str(int16_t i) { // converts int16 to string. Moreover, r
 void setup() {
   Serial.begin(9600);
   EEPROM.begin(512);  //Initialize EEPROM
-
-  maxY_acc = eepromRead(maxY_acc_ADDR);
-  minY_acc = eepromRead(minY_acc_ADDR);
-  Serial.print("maxY read "); Serial.println(maxY_acc);
-  Serial.print("minY read "); Serial.println(minY_acc);
   
   Wire.begin();
   Wire.beginTransmission(MPU_ADDR); // Begins a transmission to the I2C slave (GY-521 board)
   Wire.write(0x6B); // PWR_MGMT_1 register
   Wire.write(0); // set to zero (wakes up the MPU-6050)
   Wire.endTransmission(true);
-
-  Serial.println(eepromRead(0x01));
+  readMPU();
+  gyroY_thresh = eepromRead(gyroY_thresh_ADDR);
+  
   wifiSetup();
-  delay(200);
-  readMPU();
-  delay(500);
-  readMPU();
- 
-  minY_acc = accelerometer_y;
-  Serial.print("got closed value of "); Serial.println(minY_acc);
-  if(accelerometer_y > maxY_acc){
-    maxY_acc = minY_acc * 2;    
-  }
+  server.on("/", handleRoot);
+  server.begin();
+  ip = (String)WiFi.localIP();
+  Serial.print("got closed value of "); Serial.println(accelerometer_y);
 }
+
 void loop() {
   readMPU();
-  
-  
-  // print out data
-  //Serial.print("aX = "); Serial.print(convert_int16_to_str(accelerometer_x));
+  // print some data
   Serial.print(" | aY = ");
   Serial.print(convert_int16_to_str(accelerometer_y));
-  //Serial.print(" | aZ = "); Serial.print(convert_int16_to_str(accelerometer_z));
-  // the following equation was taken from the documentation [MPU-6000/MPU-6050 Register Map and Description, p.30]
-  //Serial.print(" | tmp = "); Serial.print(temperature/340.00+36.53);
-  //Serial.print(" | gX = "); Serial.print(convert_int16_to_str(gyro_x));
   Serial.print(" | gYdiff = "); 
-  Serial.println(convert_int16_to_str(gyro_y_diff));
-  //Serial.print(" | gZ = "); Serial.print(convert_int16_to_str(gyro_z));
-  //Serial.println();
+  Serial.print(convert_int16_to_str(gyro_y_diff));
+  Serial.println();
 
-  if(gyro_y_diff > 1000 && accelerometer_y > minY_acc){
-    sendWebPOST();
+  //if device is moving more than threshold
+  if(gyro_y_diff > gyroY_thresh){
+    sendNotification();
   }
             
-
-  handleClient();
-
+  MDNS.update();
+  server.handleClient();
   delay(100);
 }
 
 void eepromWrite(int address, int16_t data){
-  EEPROM.write(address, data); 
+  uint8_t xlow = data & 0xff;
+  uint8_t xhigh = (data >> 8);
+  
+  EEPROM.write(address, xlow); 
+  EEPROM.write(address + 0x01, xhigh);
   EEPROM.commit();
-    
 }
 
+//each memory address is only 8 bits (max int is 255)
 int16_t eepromRead(int address){
+    //Reading a blank eeprom returns 51
     return EEPROM.read(address);
   }
 
-void sendWebPOST(){
-    Serial.print("sending POST to ");
-    Serial.println(ifttt_url);
-    HTTPClient http;
-      
-    // Your Domain name with URL path or IP address with path
-    http.begin(ifttt_url);
-    
-    // // Specify content-type header
-    // http.addHeader("Content-Type", "text/plain");
-    // // Data to send with HTTP POST
-    // String httpRequestData = "";           
-    // Send HTTP POST request
-    int httpResponseCode = http.GET();
-    http.end();
-    Serial.print("response was: ");
-    Serial.println(httpResponseCode);
+
+template <class T> int EEPROM_writeAnything(int ee, const T& value)
+{
+   const byte* p = (const byte*)(const void*)&value;
+   int i(0);
+   for (; i < sizeof(value); ++i)
+       EEPROM.write(ee++, *p++);
+   return i;
 }
 
 
-void handleClient(){
-    WiFiClient client = server.available();   // Listen for incoming clients
+template <class T> int EEPROM_readAnything(int ee, T& value)
+{
+   byte* p = (byte*)(void*)&value;
+   int i (0);
+   for (; i < sizeof(value); ++i)
+       *p++ = EEPROM.read(ee++);
+   return i;
+}
 
-  if (client) {                             // If a new client connects,
-    Serial.println("New Client.");          // print a message out in the serial port
-    String currentLine = "";                // make a String to hold incoming data from the client
-    while (client.connected()) {            // loop while the client's connected
-      if (client.available()) {             // if there's bytes to read from the client,
-        char c = client.read();             // read a byte, then
-        Serial.write(c);                    // print it out the serial monitor
-        header += c;
-        if (c == '\n') {                    // if the byte is a newline character
-          // if the current line is blank, you got two newline characters in a row.
-          // that's the end of the client HTTP request, so send a response:
-          if (currentLine.length() == 0) {
-            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
-            // and a content-type so the client knows what's coming, then a blank line:
-            client.println("HTTP/1.1 200 OK");
-            client.println("Content-type:text/html");
-            client.println("Connection: close");
-            client.println();
+void sendNotification(){
+    Serial.print("sending GET to ");
+    Serial.println(ifttt_url);
+    HTTPClient http;
+    http.begin(ifttt_url);
+    int httpResponseCode = http.GET();
+    http.end();
+    
+    Serial.println("response was: " + (String) httpResponseCode);
+}
 
+void handleRoot() {
 
-            if (header.indexOf("GET /minY") >= 0) {
-              String url = header;
-              url.replace("GET /minY", "");
-              url.substring(0, url.indexOf("HTTP"));
-              minY_acc = url.toInt();
-              Serial.print("SETTING MIN Y TO: ");
-              Serial.println(minY_acc);
-              Serial.println();
-
-              eepromWrite(minY_acc_ADDR, minY_acc);
-            }
-
-            if (header.indexOf("GET /maxY") >= 0) {
-              String url = header;
-              url.replace("GET /maxY", "");
-              url.substring(0, url.indexOf("HTTP"));
-              maxY_acc = url.toInt();
-              Serial.print("SETTING MAX Y TO: ");
-              Serial.println(maxY_acc);
-              Serial.println();
-
-              eepromWrite(maxY_acc_ADDR, maxY_acc);
-            }
-
-           
-            
-            // Display the HTML web page
-            client.println("<!DOCTYPE html><html>");
-            client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
-            client.println("<link rel=\"icon\" href=\"data:,\">");
-            client.println("<style>.flapIndicator{width:20px;height:20px;} .open{background:green;} .close{background:red;}</style>");
-            client.println("</head>");
-         
-            
-            
-            client.println("<body><h1>Letter box</h1>");
-            if(accelerometer_y > maxY_acc){
-              client.println("<div class=\"flapIndicator open\"></div>");
-            } else {
-              client.println("<div class=\"flapIndicator close\"></div>");
-            }
-            
-            client.println("accelerometer Y: ");
-            client.println(convert_int16_to_str(accelerometer_y));
-            client.println("<br>");
-            
-            client.println("min Y acc: ");
-            client.println(convert_int16_to_str(minY_acc));
-            client.println("<br>");
-            client.println("max Y acc: ");
-            client.println(convert_int16_to_str(maxY_acc));
-            client.println("<br><br><br>");
-            client.println(WiFi.macAddress());
-
-            
-            
-            // The HTTP response ends with another blank line
-            client.println();
-            // Break out of the while loop
-            break;
-          } else { // if you got a newline, then clear currentLine
-            currentLine = "";
-          }
-        } else if (c != '\r') {  // if you got anything else but a carriage return character,
-          currentLine += c;      // add it to the end of the currentLine
-        }
-      }
-    }
-    // Clear the header variable
-    header = "";
-    // Close the connection
-    client.stop();
-    Serial.println("Client disconnected.");
-    Serial.println("");
+  if(server.argName(0) == "gyroY_thresh"){
+    gyroY_thresh = server.arg(0).toInt();
+    Serial.print("SETTING GYRO Y THRESH TO: ");
+    Serial.println(gyroY_thresh);
+    Serial.println();
+    eepromWrite(gyroY_thresh_ADDR, gyroY_thresh);
   }
- }
+  
+  String message = html_index_head;
+  message += "<body>";
+  message += "<body><h1>Letter box</h1>";
+  message += "accelerometer Y: " + (String)convert_int16_to_str(accelerometer_y);
+  message += "<br>";
+  message += "gyro Y threshold:  " + (String)convert_int16_to_str(gyroY_thresh);
+  message += "<br>";
+  message += "gyro Y diff:  " + (String)convert_int16_to_str(gyro_y_diff);
+  message += "<form><input name=\"gyroY_thresh\" type=\"text\"  />";
+  message += "<button id=\"gyro_thresh_input\" type=\"submit\" value=\"Submit\">set gyro threshold</button></form>";
+  message += "<br><br><br>";
+  message += WiFi.macAddress();
+  
+  server.send(200, "text/html", message);
+}
+
+
 
 void readMPU(){
   last_accelerometer_y = accelerometer_y;
@@ -268,11 +186,8 @@ void wifiSetup(){
   Serial.println(WiFi.localIP());
   server.begin();
   
-
-  if (!MDNS.begin(mDnsName)) {             // Start the mDNS responder for .local
-    Serial.println("Error setting up MDNS responder!");
+  if (MDNS.begin(mDnsName)) {             // Start the mDNS responder for .local
+    Serial.println("MDNS responder started");
   }
-  Serial.println("mDNS responder started");
-
-    MDNS.addService("http", "tcp", 80);
+  MDNS.addService("http", "tcp", 80);
 }
