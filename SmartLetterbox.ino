@@ -18,9 +18,13 @@ String html_index_head = "<!DOCTYPE html><html><head><meta name=\"viewport\" con
 
 ESP8266WebServer server(80);
 
-int16_t gyroY_thresh = 1000;
+struct config_t
+{
+  int16_t gyroY_thresh = 9000;
+} configuration;
 
-const int gyroY_thresh_ADDR = 0x20;
+
+const int gyroY_thresh_ADDR = 80;
 
 const int MPU_ADDR = 0x68; // I2C address of the MPU-6050. If AD0 pin is set to HIGH, the I2C address will be 0x69.
 int16_t accelerometer_x, accelerometer_y, accelerometer_z; // variables for accelerometer raw data
@@ -45,7 +49,8 @@ void setup() {
   Wire.write(0); // set to zero (wakes up the MPU-6050)
   Wire.endTransmission(true);
   readMPU();
-  gyroY_thresh = eepromRead(gyroY_thresh_ADDR);
+  //EEPROM_readAnything(80,configuration);
+  Serial.println("thresh: " + (String)configuration.gyroY_thresh);
   
   wifiSetup();
   server.on("/", handleRoot);
@@ -64,8 +69,9 @@ void loop() {
   Serial.println();
 
   //if device is moving more than threshold
-  if(gyro_y_diff > gyroY_thresh){
+  if(gyro_y_diff > configuration.gyroY_thresh){
     sendNotification();
+    delay(1500);
   }
             
   MDNS.update();
@@ -122,19 +128,19 @@ void sendNotification(){
 void handleRoot() {
 
   if(server.argName(0) == "gyroY_thresh"){
-    gyroY_thresh = server.arg(0).toInt();
+    configuration.gyroY_thresh = server.arg(0).toInt();
     Serial.print("SETTING GYRO Y THRESH TO: ");
-    Serial.println(gyroY_thresh);
+    Serial.println(configuration.gyroY_thresh);
     Serial.println();
-    eepromWrite(gyroY_thresh_ADDR, gyroY_thresh);
+    EEPROM_writeAnything(80, configuration);
   }
   
   String message = html_index_head;
   message += "<body>";
-  message += "<body><h1>Letter box</h1>";
+  message += "<h1>Letter box</h1>";
   message += "accelerometer Y: " + (String)convert_int16_to_str(accelerometer_y);
   message += "<br>";
-  message += "gyro Y threshold:  " + (String)convert_int16_to_str(gyroY_thresh);
+  message += "gyro Y threshold:  " + (String)convert_int16_to_str(configuration.gyroY_thresh);
   message += "<br>";
   message += "gyro Y diff:  " + (String)convert_int16_to_str(gyro_y_diff);
   message += "<form><input name=\"gyroY_thresh\" type=\"text\"  />";
